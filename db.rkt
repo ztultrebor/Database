@@ -68,30 +68,59 @@
                    (append (database-data db) great-filtered))))
 
 
-(define (filter-column db col)
+(define (delete-column db col)
   ; Database String -> Database
   ; remove column named col
   (local (
-          (define (get-column-index head n)
-            ; Header N -> N
-            ; returns the index of column called col
-            (cond
-              [(empty? head) #f]
-              [(string=? (schema-name (first head)) col) n]
-              [else (get-column-index (rest head) (add1 n))]))
-          (define i (get-column-index (database-header db) 0))
+          (define i (get-column-index (database-header db) col))
           (define (eliminate ls n)
             ; [ListOf X] N -> [ListOf X]
             ; strikes the ith element from a list
             (cond
               [(empty? ls) #f]
-              [(= i n) (rest ls)]
-              [else (cons (first ls) (eliminate (rest ls) (add1 n)))])))
+              [(= 0 n) (rest ls)]
+              [else (cons (first ls) (eliminate (rest ls) (sub1 n)))])))
     ; - IN -
-    (make-database (eliminate (database-header db) 0)
-                   (map (lambda (r) (eliminate r 0)) (database-data db)))))
+    (make-database (eliminate (database-header db) i)
+                   (map (lambda (r) (eliminate r i)) (database-data db)))))
           
-          
+
+(define (filter-row db col pred)
+  ; Database String [X -> Boolean] -> Database
+  ; remove rows that fail to meet certain conditions
+  (local (
+          (define i (get-column-index (database-header db) col))
+          (define (selektor row n)
+            ; [ListOf X] N -> [ListOf X]
+            ; selects the ith element from a list
+            (cond
+              [(empty? row) #f]
+              [(= 0 n) (first row)]
+              [else (selektor (rest row) (sub1 n))])))
+    ; - IN -
+    (make-database (database-header db)
+                   (filter (lambda (r) (pred (selektor r i))) (database-data db)))))
+
+
+(define (get-column-index head col)
+  ; Header N -> N
+  ; returns the index of column called col
+  (local (
+          (define (index ls n)
+            (cond
+              [(empty? ls) #f]
+              [(string=? (schema-name (first ls)) col) n]
+              [else (index (rest ls) (add1 n))])))
+    ; - IN -
+    (index head 0)))
+
+
+(define (true? b)
+  ; Boolean -> Boolean
+  ; returns true if #true
+  (not (false? b)))
+
+
 
 ; ======================
 ; checks
@@ -117,12 +146,20 @@
               (make-database (database-header attendance1) valid-data3))
 (check-expect (add-data invalid-data2 attendance0)
               (make-database (database-header attendance1) valid-data2))
-(check-expect (filter-column attendance1 "Age")
+(check-expect (delete-column attendance1 "Age")
               (make-database `(,name ,present) '(("Pete" #f))))
+(check-expect (filter-row attendance1 "Present" false?)
+              (make-database `(,name ,age ,present) '(("Pete" 27 #f))))
+(check-expect (filter-row attendance1 "Present" true?)
+              (make-database `(,name ,age ,present) '()))
 
 
 ; ======================
 ; action!
 
 
-(filter-column (add-data data-wallop attendance0) "Name")
+(delete-column (add-data data-wallop attendance0) "Name")
+
+(filter-row (add-data data-wallop attendance0) "Present" true?)
+
+(filter-row (add-data data-wallop attendance0) "Age" (lambda (a) (> a 30)))
