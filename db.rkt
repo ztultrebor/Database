@@ -44,17 +44,9 @@
 ; =====================
 ; constants
 
-(define name (make-schema "Name" string?))
-(define age (make-schema "Age" number?))
-(define present (make-schema "Present" boolean?))
-(define attendance0 (make-database `(,name ,age ,present) '()))
-(define valid-data1 '(("Pete" 27 #f)))
-(define invalid-data1 '(("Pete" "27" #f)))
-(define attendance1 (make-database `(,name ,age ,present) valid-data1))
-(define valid-data2 '(("Jete" 49 #t)))
-(define valid-data3 (append valid-data1 valid-data2))
-(define invalid-data2 (append invalid-data1 valid-data2))
-
+(define data-wallop '(("Alice" 35 #t) ("Bob" 25 #f) ("Carol" 30 #t)
+                                      ("Dave" 32 #f) ("Pete" "27" #f)
+                                      ("Pete" 27 #f) ("Jete" 49 #t)))
 
 
 ; ====================
@@ -76,11 +68,44 @@
                    (append (database-data db) great-filtered))))
 
 
+(define (filter-column db col)
+  ; Database String -> Database
+  ; remove column named col
+  (local (
+          (define (get-column-index head n)
+            ; Header N -> N
+            ; returns the index of column called col
+            (cond
+              [(empty? head) #f]
+              [(string=? (schema-name (first head)) col) n]
+              [else (get-column-index (rest head) (add1 n))]))
+          (define i (get-column-index (database-header db) 0))
+          (define (eliminate ls n)
+            ; [ListOf X] N -> [ListOf X]
+            ; strikes the ith element from a list
+            (cond
+              [(empty? ls) #f]
+              [(= i n) (rest ls)]
+              [else (cons (first ls) (eliminate (rest ls) (add1 n)))])))
+    ; - IN -
+    (make-database (eliminate (database-header db) 0)
+                   (map (lambda (r) (eliminate r 0)) (database-data db)))))
+          
+          
 
 ; ======================
 ; checks
 
-
+(define name (make-schema "Name" string?))
+(define age (make-schema "Age" number?))
+(define present (make-schema "Present" boolean?))
+(define attendance0 (make-database `(,name ,age ,present) '()))
+(define valid-data1 '(("Pete" 27 #f)))
+(define invalid-data1 '(("Pete" "27" #f)))
+(define attendance1 (make-database `(,name ,age ,present) valid-data1))
+(define valid-data2 '(("Jete" 49 #t)))
+(define valid-data3 (append valid-data1 valid-data2))
+(define invalid-data2 (append invalid-data1 valid-data2))
 (check-expect (add-data valid-data1 attendance0)
               (make-database (database-header attendance0) valid-data1))
 (check-expect (add-data invalid-data1 attendance0) attendance0)
@@ -92,11 +117,12 @@
               (make-database (database-header attendance1) valid-data3))
 (check-expect (add-data invalid-data2 attendance0)
               (make-database (database-header attendance1) valid-data2))
+(check-expect (filter-column attendance1 "Age")
+              (make-database `(,name ,present) '(("Pete" #f))))
 
 
 ; ======================
 ; action!
 
-attendance0
-(add-row valid-data1 attendance0)
-(add-row valid-data2 (add-row valid-data1 attendance0))
+
+(filter-column (add-data data-wallop attendance0) "Name")
