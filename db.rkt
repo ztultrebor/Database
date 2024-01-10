@@ -8,12 +8,12 @@
 ; data definitions
 
 
-(define-struct database [header data])
-; a Database is a [[ListOf Schema] [ListOf Row]]
+(define-struct database [header content])
+; a Database is a [Header Content]
 #;
 (define (fn-on-db db)
-  (... (fn-on-sheader (database-header db))
-       ... (fn-on-data (database-data db))))
+  (... (fn-on-header (database-header db))
+       ... (fn-on-content (database-content db))))
 
 
 ; a Header is a [ListOf Schema]
@@ -30,10 +30,10 @@
        ... (fn-on-func (schema-pred scm))))
 
 
-; a Data is a [ListOf Row]
+; a Content is a [ListOf Row]
 #;
-(define (fn-on-data d)
-  (cons (fn-on-row (first d)) (fn-on-data (rest d))))
+(define (fn-on-content d)
+  (cons (fn-on-row (first d)) (fn-on-content (rest d))))
 
 
 ; a Row is a [ListOf Any]
@@ -53,19 +53,22 @@
 ; functions
 
 
-(define (add-data data db)
-  ; Data Database -> Database
-  ; adds a whole chunk of data to a database
+(define (add-content nucontent db)
+  ; content Database -> Database
+  ; adds a whole chunk of content to a database
   (local (
           (define preds (map (lambda (p) (schema-pred p)) (database-header db)))
-          (define (correct? row)
+          (define (correct-and-unique? row)
             (and
              (= (length row) (length preds))
-             (andmap (lambda (p el) (p el)) preds row)))
-          (define great-filtered (filter (lambda (row) (correct? row)) data)))
+             (andmap (lambda (p el) (p el)) preds row)
+             (not (ormap (lambda (db-row) (equal? row db-row))
+                          (database-content db)))))
+          (define great-filtered
+            (filter (lambda (row) (correct-and-unique? row)) nucontent)))
     ; - IN -
     (make-database (database-header db)
-                   (append (database-data db) great-filtered))))
+                   (append (database-content db) great-filtered))))
 
 
 (define (delete-column db col)
@@ -82,7 +85,7 @@
               [else (cons (first ls) (eliminate (rest ls) (sub1 n)))])))
     ; - IN -
     (make-database (eliminate (database-header db) i)
-                   (map (lambda (r) (eliminate r i)) (database-data db)))))
+                   (map (lambda (r) (eliminate r i)) (database-content db)))))
           
 
 (define (filter-row db col pred)
@@ -99,7 +102,7 @@
               [else (selektor (rest row) (sub1 n))])))
     ; - IN -
     (make-database (database-header db)
-                   (filter (lambda (r) (pred (selektor r i))) (database-data db)))))
+                   (filter (lambda (r) (pred (selektor r i))) (database-content db)))))
 
 
 (define (get-column-index head col)
@@ -129,23 +132,24 @@
 (define age (make-schema "Age" number?))
 (define present (make-schema "Present" boolean?))
 (define attendance0 (make-database `(,name ,age ,present) '()))
-(define valid-data1 '(("Pete" 27 #f)))
-(define invalid-data1 '(("Pete" "27" #f)))
-(define attendance1 (make-database `(,name ,age ,present) valid-data1))
-(define valid-data2 '(("Jete" 49 #t)))
-(define valid-data3 (append valid-data1 valid-data2))
-(define invalid-data2 (append invalid-data1 valid-data2))
-(check-expect (add-data valid-data1 attendance0)
-              (make-database (database-header attendance0) valid-data1))
-(check-expect (add-data invalid-data1 attendance0) attendance0)
-(check-expect (add-data valid-data2 attendance1)
+(define valid-content1 '(("Pete" 27 #f)))
+(define invalid-content1 '(("Pete" "27" #f)))
+(define attendance1 (make-database `(,name ,age ,present) valid-content1))
+(define valid-content2 '(("Jete" 49 #t)))
+(define valid-content3 (append valid-content1 valid-content2))
+(define invalid-content2 (append invalid-content1 valid-content2))
+(check-expect (add-content valid-content1 attendance0)
+              (make-database (database-header attendance0) valid-content1))
+(check-expect (add-content invalid-content1 attendance0) attendance0)
+(check-expect (add-content valid-content2 attendance1)
               (make-database (database-header attendance1)
-                             (append (database-data attendance1) valid-data2)))
-(check-expect (add-data invalid-data1 attendance1) attendance1)
-(check-expect (add-data valid-data3 attendance0)
-              (make-database (database-header attendance1) valid-data3))
-(check-expect (add-data invalid-data2 attendance0)
-              (make-database (database-header attendance1) valid-data2))
+                             (append (database-content attendance1) valid-content2)))
+(check-expect (add-content invalid-content1 attendance1) attendance1)
+(check-expect (add-content valid-content3 attendance0)
+              (make-database (database-header attendance1) valid-content3))
+(check-expect (add-content valid-content1 attendance1) attendance1)
+(check-expect (add-content invalid-content2 attendance0)
+              (make-database (database-header attendance1) valid-content2))
 (check-expect (delete-column attendance1 "Age")
               (make-database `(,name ,present) '(("Pete" #f))))
 (check-expect (filter-row attendance1 "Present" false?)
@@ -157,9 +161,10 @@
 ; ======================
 ; action!
 
+(add-content data-wallop (add-content data-wallop attendance0))
 
-(delete-column (add-data data-wallop attendance0) "Name")
+(delete-column (add-content data-wallop attendance0) "Name")
 
-(filter-row (add-data data-wallop attendance0) "Present" true?)
+(filter-row (add-content data-wallop attendance0) "Present" true?)
 
-(filter-row (add-data data-wallop attendance0) "Age" (lambda (a) (> a 30)))
+(filter-row (add-content data-wallop attendance0) "Age" (lambda (a) (> a 30)))
