@@ -48,53 +48,55 @@
 (define age (make-schema "Age" number?))
 (define present (make-schema "Present" boolean?))
 (define attendance0 (make-database `(,name ,age ,present) '()))
-(define valid-row1 '("Pete" 27 #f))
-(define invalid-row1 '("Pete" "27" #f))
-(define attendance1 (make-database `(,name ,age ,present) '(valid-row1)))
-(define valid-row2 '("Jete" 49 #t))
+(define valid-data1 '(("Pete" 27 #f)))
+(define invalid-data1 '(("Pete" "27" #f)))
+(define attendance1 (make-database `(,name ,age ,present) valid-data1))
+(define valid-data2 '(("Jete" 49 #t)))
+(define valid-data3 (append valid-data1 valid-data2))
+(define invalid-data2 (append invalid-data1 valid-data2))
+
+
 
 ; ====================
 ; functions
 
-(define (add-row row db)
-  ; Row Database -> Database
-  ; adds a row to the database if the format is correct
-  (local (
-          (define preds (map (lambda (p) (schema-pred p)) (database-header db)))
-          (define correct?
-            (and
-             (= (length row) (length preds))
-             (andmap (lambda (p el) (p el)) preds row))))
-          ; - IN -
-    (make-database (database-header db)
-                   (if correct?
-                       (cons row (database-data db))
-                       (database-data db)))))
 
-; !!! add add multiple rows at a time
-#;
 (define (add-data data db)
   ; Data Database -> Database
   ; adds a whole chunk of data to a database
-  (cons (fn-on-row (first d)) (fn-on-data (rest d))))
+  (local (
+          (define preds (map (lambda (p) (schema-pred p)) (database-header db)))
+          (define (correct? row)
+            (and
+             (= (length row) (length preds))
+             (andmap (lambda (p el) (p el)) preds row)))
+          (define great-filtered (filter (lambda (row) (correct? row)) data)))
+    ; - IN -
+    (make-database (database-header db)
+                   (append (database-data db) great-filtered))))
+
+
 
 ; ======================
 ; checks
 
 
-(check-expect (add-row valid-row1 attendance0)
-              (make-database (database-header attendance0) `(,valid-row1)))
-(check-expect (add-row invalid-row1 attendance0) attendance0)
-(check-expect (add-row valid-row2 attendance1)
+(check-expect (add-data valid-data1 attendance0)
+              (make-database (database-header attendance0) valid-data1))
+(check-expect (add-data invalid-data1 attendance0) attendance0)
+(check-expect (add-data valid-data2 attendance1)
               (make-database (database-header attendance1)
-                             (cons valid-row2 (database-data attendance1))))
-(check-expect (add-row invalid-row1 attendance1) attendance1)
-
+                             (append (database-data attendance1) valid-data2)))
+(check-expect (add-data invalid-data1 attendance1) attendance1)
+(check-expect (add-data valid-data3 attendance0)
+              (make-database (database-header attendance1) valid-data3))
+(check-expect (add-data invalid-data2 attendance0)
+              (make-database (database-header attendance1) valid-data2))
 
 
 ; ======================
 ; action!
 
 attendance0
-(add-row valid-row1 attendance0)
-(add-row valid-row2 (add-row valid-row1 attendance0))
+(add-row valid-data1 attendance0)
+(add-row valid-data2 (add-row valid-data1 attendance0))
