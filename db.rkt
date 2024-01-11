@@ -46,68 +46,63 @@
 ; =====================
 ; constants
 
-(define data-wallop '(("Alice" 35 #t) ("Bob" 25 #f) ("Carol" 30 #t)
-                                      ("Dave" 32 #f) ("Pete" "27" #f)
-                                      ("Pete" 27 #f) ("Jete" 49 #t)))
-
 
 ; ====================
 ; functions
 
-
-(define (make-column name pred content)
-; String [Any -> Boolean] [ListOf X]
-  ; create a column of content
-  (local (
-          (define db (make-database (list (make-spec name pred)) '()))
-          (define col (map (lambda (el) (list el)) content)))
-    ; - IN -
-    (add-content col db)))
-
   
-(define (add-content nucontent db)
+(define (check-integrity db)
   ; content Database -> Database
-  ; adds a whole chunk of content to a database
+  ; ensures the data integrity of the database
   (local (
-          (define preds (map (lambda (p) (spec-pred p)) (database-schema db)))
-          (define (correct-and-unique? row)
+          (define schema (database-schema db))
+          (define content (database-content db))
+          (define preds (map (lambda (spc) (spec-pred spc)) schema))
+          (define l-preds (length preds))
+          (define (correct-and-unique? row otherrows)
             ; Row -> Boolean
             ; does the new row have the correct structure and composition
             ; according to the schema, and would it be unique?
             (and
-             (= (length row) (length preds))
+             (= (length row) l-preds)
              (andmap (lambda (p el) (p el)) preds row)
-             (not (ormap (lambda (db-row) (equal? row db-row))
-                          (database-content db)))))
-          (define great-filtered
-            (filter (lambda (row) (correct-and-unique? row)) nucontent)))
+             (not (ormap (lambda (db-row) (equal? row db-row)) otherrows))))
+          (define (check-row rows)
+            ; Content -> Content
+            ; deletes improper rows from database
+            (cond
+              [(empty? rows) '()]
+              [(correct-and-unique? (first rows) (rest rows))
+               (cons (first rows) (check-row (rest rows)))]
+              [else (check-row (rest rows))])))
     ; - IN -
-    (make-database (database-schema db)
-                   (append (database-content db) great-filtered))))
+    (make-database schema (check-row content))))
 
 
 (define (delete-column db col)
   ; Database String -> Database
   ; remove column named col
   (local (
-          (define i (get-column-index (database-schema db) col))
-          (define (eliminate ls n)
+          (define sch (database-schema db))
+          (define i (get-column-index sch col))
+          (define (strike ls n)
             ; [ListOf X] N -> [ListOf X]
             ; strikes the ith element from a list
             (cond
               [(empty? ls) #f]
               [(= 0 n) (rest ls)]
-              [else (cons (first ls) (eliminate (rest ls) (sub1 n)))])))
+              [else (cons (first ls) (strike (rest ls) (sub1 n)))])))
     ; - IN -
-    (make-database (eliminate (database-schema db) i)
-                   (map (lambda (r) (eliminate r i)) (database-content db)))))
+    (make-database (strike sch i)
+                   (map (lambda (r) (strike r i)) (database-content db)))))
           
 
-(define (filter-row db col pred)
+(define (filter-content db col pred)
   ; Database String [X -> Boolean] -> Database
-  ; remove rows that fail to meet certain conditions
+  ; keep only rows that meet defined predicate conditions
   (local (
-          (define i (get-column-index (database-schema db) col))
+          (define sch (database-schema db))
+          (define i (get-column-index sch col))
           (define (selektor row n)
             ; [ListOf X] N -> [ListOf X]
             ; selects the ith element from a list
@@ -116,9 +111,8 @@
               [(= 0 n) (first row)]
               [else (selektor (rest row) (sub1 n))])))
     ; - IN -
-    (make-database (database-schema db)
-                   (filter (lambda (r) (pred (selektor r i)))
-                           (database-content db)))))
+    (make-database sch (filter (lambda (r) (pred (selektor r i)))
+                               (database-content db)))))
 
 
 (define (get-column-index head col)
@@ -144,52 +138,42 @@
 ; ======================
 ; checks
 
+
 (define name (make-spec "Name" string?))
 (define age (make-spec "Age" number?))
-(define present (make-spec "Present" boolean?))
-(define attendance0 (make-database `(,name ,age ,present) '()))
-(define valid-content1 '(("Pete" 27 #f)))
-(define invalid-content1 '(("Pete" "27" #f)))
-(define attendance1 (make-database `(,name ,age ,present) valid-content1))
-(define valid-content2 '(("Jete" 49 #t)))
-(define valid-content3 (append valid-content1 valid-content2))
-(define invalid-content2 (append invalid-content1 valid-content2))
-#;(check-expect (make-column "Name" string? '("Joe"))
-              (make-database (list (make-spec "Name" string?))
-                             (list (list "Joe"))))
-(check-expect (add-content valid-content1 attendance0)
-              (make-database (database-schema attendance0) valid-content1))
-(check-expect (add-content invalid-content1 attendance0) attendance0)
-(check-expect (add-content valid-content2 attendance1)
-              (make-database (database-schema attendance1)
-                             (append (database-content attendance1)
-                                     valid-content2)))
-(check-expect (add-content invalid-content1 attendance1) attendance1)
-(check-expect (add-content valid-content3 attendance0)
-              (make-database (database-schema attendance1) valid-content3))
-(check-expect (add-content valid-content1 attendance1) attendance1)
-(check-expect (add-content invalid-content2 attendance0)
-              (make-database (database-schema attendance1) valid-content2))
-(check-expect (delete-column attendance1 "Age")
-              (make-database `(,name ,present) '(("Pete" #f))))
-(check-expect (filter-row attendance1 "Present" false?)
-              (make-database `(,name ,age ,present) '(("Pete" 27 #f))))
-(check-expect (filter-row attendance1 "Present" true?)
-              (make-database `(,name ,age ,present) '()))
+(define living (make-spec "Living" boolean?))
+(define schema `(,name ,age ,living))
+(define deleted-schema `(,name ,living))
+(define content  '(("Job" 792 #f) ("Esai" 231 #t) ("Hemat" 666 #f)
+                                  ("Babil" 4 #t)))
+(define invalid-content '(("Job" 792 #f) ("Esai" 231 #t) ("Hemat" 666 #f)
+                                         ("Babil" 4 #t) ("Akatesh" "792" #f)))
+(define mismatch-content '(("Job" 792 #f) ("Esai" 231 #t) ("Hemat" 666 #f)
+                                          ("Babil" 4 #t)
+                                          ("Akatesh" 792 #f "wrong")))
+(define dupli-content '(("Hemat" 666 #f) ("Babil" 4 #t) ("Job" 792 #f)
+                                         ("Esai" 231 #t) ("Hemat" 666 #f)
+                                         ("Babil" 4 #t)))
+(define deleted-content  '(("Job" #f) ("Esai" #t) ("Hemat" #f) ("Babil" #t)))
+(define filtered-content  '(("Job" 792 #f) ("Hemat" 666 #f)))
+(check-expect (check-integrity (make-database schema content))
+              (make-database schema content))
+(check-expect (check-integrity (make-database schema invalid-content))
+              (make-database schema content))
+(check-expect (check-integrity (make-database schema mismatch-content))
+              (make-database schema content))
+(check-expect (check-integrity (make-database schema dupli-content))
+              (make-database schema content))
+(check-expect (delete-column (make-database schema content) "Age")
+              (make-database deleted-schema deleted-content))
+(check-expect (filter-content (make-database schema content) "Age"
+                              (lambda (el) (> el 500)))
+              (make-database schema filtered-content))
+
 
 
 
 ; ======================
 ; action!
 
-(add-content data-wallop (add-content data-wallop attendance0))
 
-(delete-column (add-content data-wallop attendance0) "Name")
-
-(filter-row (add-content data-wallop attendance0) "Present" true?)
-
-(filter-row (add-content data-wallop attendance0) "Age" (lambda (a) (> a 30)))
-
-(make-column "Name" string? '("Joe"))
-
-(make-column "Name" string? '("Job" "Esai" "Hemat" "Babil"))
