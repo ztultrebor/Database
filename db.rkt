@@ -79,22 +79,25 @@
     (check-row content)))
 
 
-(define (delete-column db col)
-  ; Database String -> Database
+(define (select-columns db locols)
+  ; Database [ListOf String] -> Database
   ; remove column named col
   (local (
           (define sch (database-schema db))
-          (define i (get-column-index sch col))
-          (define (strike ls n)
-            ; [ListOf X] N -> [ListOf X]
-            ; strikes the ith element from a list
+          (define keeplist
+            (map (lambda (n) (member? n locols)) (map spec-name sch)))
+          (define (extract ls truthtable)
+            ; [ListOf X] [ListOf Boolean] -> [ListOf X]
+            ; collects the elements from a list correnponding to #t
             (cond
-              [(empty? ls) #f]
-              [(= 0 n) (rest ls)]
-              [else (cons (first ls) (strike (rest ls) (sub1 n)))])))
+              [(empty? truthtable) '()]
+              [(first truthtable)
+               (cons (first ls) (extract (rest ls) (rest truthtable)))]
+              [else (extract (rest ls) (rest truthtable))])))
     ; - IN -
-    (make-database (strike sch i)
-                   (map (lambda (r) (strike r i)) (database-content db)))))
+    (make-database (extract sch keeplist)
+                   (map (lambda (r) (extract r keeplist))
+                        (database-content db)))))
           
 
 (define (filter-content db col pred)
@@ -160,7 +163,7 @@
 (check-expect (check-integrity (make-database schema invalid-content)) #f)
 (check-expect (check-integrity (make-database schema mismatch-content)) #f)
 (check-expect (check-integrity (make-database schema dupli-content)) #f)
-(check-expect (delete-column (make-database schema content) "Age")
+(check-expect (select-columns (make-database schema content) '("Name" "Living"))
               (make-database deleted-schema deleted-content))
 (check-expect (filter-content (make-database schema content) "Age"
                               (lambda (el) (> el 500)))
