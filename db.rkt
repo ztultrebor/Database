@@ -74,7 +74,7 @@
              (empty? rows)
              (and
               (correct-and-unique? (first rows) (rest rows))
-               (check-row (rest rows))))))
+              (check-row (rest rows))))))
     ; - IN -
     (check-row content)))
 
@@ -105,36 +105,18 @@
   ; keep only rows that meet defined predicate conditions
   (local (
           (define sch (database-schema db))
-          (define i (get-column-index sch col))
-          (define (selektor row n)
+          (define keeplist
+            (map (lambda (n) (string=? n col)) (map spec-name sch)))
+          (define (filter-row row truthtable)
             ; [ListOf X] N -> [ListOf X]
             ; selects the ith element from a list
             (cond
-              [(empty? row) #f]
-              [(= 0 n) (first row)]
-              [else (selektor (rest row) (sub1 n))])))
+              [(empty? truthtable) #t]
+              [(first truthtable) (pred (first row))]
+              [else (filter-row (rest row) (rest truthtable))])))
     ; - IN -
-    (make-database sch (filter (lambda (r) (pred (selektor r i)))
+    (make-database sch (filter (lambda (r) (filter-row r keeplist))
                                (database-content db)))))
-
-
-(define (get-column-index head col)
-  ; Schema N -> N
-  ; returns the index of column called col
-  (local (
-          (define (index ls n)
-            (cond
-              [(empty? ls) #f]
-              [(string=? (spec-name (first ls)) col) n]
-              [else (index (rest ls) (add1 n))])))
-    ; - IN -
-    (index head 0)))
-
-
-(define (true? b)
-  ; Boolean -> Boolean
-  ; returns true if #true
-  (not (false? b)))
 
 
 
@@ -168,7 +150,6 @@
 (check-expect (filter-content (make-database schema content) "Age"
                               (lambda (el) (> el 500)))
               (make-database schema filtered-content))
-
 
 
 
