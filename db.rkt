@@ -86,37 +86,31 @@
           (define sch (database-schema db))
           (define keeplist
             (map (lambda (n) (member? n locols)) (map spec-name sch)))
-          (define (extract ls truthtable)
-            ; [ListOf X] [ListOf Boolean] -> [ListOf X]
-            ; collects the elements from a list correnponding to #t
-            (cond
-              [(empty? truthtable) '()]
-              [(first truthtable)
-               (cons (first ls) (extract (rest ls) (rest truthtable)))]
-              [else (extract (rest ls) (rest truthtable))])))
+          (define (select lst)
+            ; [ListOf X] -> [ListOf X]
+            ; filter a list according to selected columns
+            (foldr
+             (lambda (elem tru suffix) (if tru (cons elem suffix) suffix))
+             '() lst keeplist)))
     ; - IN -
-    (make-database (extract sch keeplist)
-                   (map (lambda (r) (extract r keeplist))
-                        (database-content db)))))
-          
+    (make-database (select sch) (map select (database-content db)))))
+
 
 (define (filter-content db col pred)
   ; Database String [X -> Boolean] -> Database
   ; keep only rows that meet defined predicate conditions
   (local (
           (define sch (database-schema db))
-          (define keeplist
-            (map (lambda (n) (string=? n col)) (map spec-name sch)))
-          (define (filter-row row truthtable)
-            ; [ListOf X] N -> [ListOf X]
-            ; selects the ith element from a list
-            (cond
-              [(empty? truthtable) #t]
-              [(first truthtable) (pred (first row))]
-              [else (filter-row (rest row) (rest truthtable))])))
+          (define interestlist
+            (map (lambda (n) (string=? n col)) (map spec-name sch))))
     ; - IN -
-    (make-database sch (filter (lambda (r) (filter-row r keeplist))
-                               (database-content db)))))
+    (make-database sch
+                   (filter
+                    (lambda (row)
+                      (andmap
+                       (lambda (elem tru) (if tru (pred elem) #t))
+                       row interestlist))
+                    (database-content db)))))
 
 
 
