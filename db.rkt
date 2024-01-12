@@ -88,16 +88,21 @@
   ; remove column named col
   (local (
           (define sch (database-schema db))
-          (define keeplist
-            (map (lambda (n) (member? n locols)) (map spec-name sch)))
-          (define (select lst)
+          (define (list-index el lst n)
+            ; X [ListOf X] N -> N
+            (cond
+              [(empty? lst) #f]
+              [(string=? el (first lst)) n]
+              [else (list-index el (rest lst) (add1 n))]))
+          (define mask
+            (map (lambda (col) (list-index col (map spec-name sch) 0)) locols))
+          (define (reorganize lst)
             ; [ListOf X] -> [ListOf X]
             ; filter a list according to selected columns
             (foldr
-             (lambda (elem tru suffix) (if tru (cons elem suffix) suffix))
-             '() lst keeplist)))
+             (lambda (i suffix) (cons (list-ref lst i) suffix)) '() mask)))
     ; - IN -
-    (make-database (select sch) (map select (database-content db)))))
+    (make-database (reorganize sch) (map reorganize (database-content db)))))
 
 
 (define (filter-content db col pred)
@@ -105,16 +110,16 @@
   ; keep only rows that meet defined predicate conditions
   (local (
           (define sch (database-schema db))
-          (define interestlist
+          (define mask
             (map (lambda (n) (string=? n col)) (map spec-name sch))))
     ; - IN -
-    (make-database sch
-                   (filter
-                    (lambda (row)
-                      (andmap
-                       (lambda (elem tru) (if tru (pred elem) #t))
-                       row interestlist))
-                    (database-content db)))))
+    (make-database
+     sch
+     (filter (lambda (row)
+               (andmap (lambda (elem tf)
+                         (if tf (pred elem) #t))
+                       row mask))
+             (database-content db)))))
 
 
 
@@ -127,6 +132,7 @@
 (define living (make-spec "Living" boolean?))
 (define schema `(,name ,age ,living))
 (define deleted-schema `(,name ,living))
+(define reordered-schema `(,name ,living ,age))
 (define content  '(("Job" 792 #f) ("Esai" 231 #t) ("Hemat" 666 #f)
                                   ("Babil" 4 #t)))
 (define invalid-content '(("Job" 792 #f) ("Esai" 231 #t) ("Hemat" 666 #f)
@@ -139,6 +145,8 @@
 (define content2 '(("Job" 792 #f) ("Hemat" 666 #f) ("Akatesh" 792 #f)))
 (define joined-content '(("Job" 792 #f) ("Esai" 231 #t) ("Hemat" 666 #f)
                                         ("Babil" 4 #t) ("Akatesh" 792 #f)))
+(define reordered-content  '(("Job" #f 792) ("Esai" #t 231) ("Hemat" #f 666)
+                                  ("Babil" #t 4)))
 (check-expect (check-integrity (make-database schema content)) #t)
 (check-expect (check-integrity (make-database schema invalid-content)) #f)
 (check-expect (check-integrity (make-database schema mismatch-content)) #f)
@@ -146,10 +154,13 @@
                     (make-database schema content2))
               (make-database schema joined-content))
 (check-error (join (make-database schema content)
-                    (make-database deleted-schema deleted-content))
-              "these databases are incompatible")
+                   (make-database deleted-schema deleted-content))
+             "these databases are incompatible")
 (check-expect (select-columns (make-database schema content) '("Name" "Living"))
               (make-database deleted-schema deleted-content))
+(check-expect (select-columns (make-database schema content)
+                              '("Name" "Living" "Age"))
+              (make-database reordered-schema reordered-content))
 (check-expect (filter-content (make-database schema content) "Age"
                               (lambda (el) (> el 500)))
               (make-database schema filtered-content))
