@@ -66,6 +66,23 @@
      (database-content db))))
 
 
+(define (join db1 db2)
+  ; Database Database -> Database
+  ; joins two databases together, providede the have the same structure
+  (local (
+          (define schema1 (database-schema db1))
+          (define schema2 (database-schema db2))
+          (define content1 (database-content db1))
+          (define content2 (database-content db2)))
+    ; - IN -
+    (if (equal? schema1 schema2)
+        (make-database
+         schema1
+         (append content1
+                 (filter (lambda (r) (not (member? r content1))) content2)))
+        (error "these databases are incompatible"))))
+
+
 (define (select-columns db locols)
   ; Database [ListOf String] -> Database
   ; remove column named col
@@ -119,9 +136,18 @@
                                           ("Akatesh" 792 #f "wrong")))
 (define deleted-content  '(("Job" #f) ("Esai" #t) ("Hemat" #f) ("Babil" #t)))
 (define filtered-content  '(("Job" 792 #f) ("Hemat" 666 #f)))
+(define content2 '(("Job" 792 #f) ("Hemat" 666 #f) ("Akatesh" 792 #f)))
+(define joined-content '(("Job" 792 #f) ("Esai" 231 #t) ("Hemat" 666 #f)
+                                        ("Babil" 4 #t) ("Akatesh" 792 #f)))
 (check-expect (check-integrity (make-database schema content)) #t)
 (check-expect (check-integrity (make-database schema invalid-content)) #f)
 (check-expect (check-integrity (make-database schema mismatch-content)) #f)
+(check-expect (join (make-database schema content)
+                    (make-database schema content2))
+              (make-database schema joined-content))
+(check-error (join (make-database schema content)
+                    (make-database deleted-schema deleted-content))
+              "these databases are incompatible")
 (check-expect (select-columns (make-database schema content) '("Name" "Living"))
               (make-database deleted-schema deleted-content))
 (check-expect (filter-content (make-database schema content) "Age"
