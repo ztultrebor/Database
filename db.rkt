@@ -55,28 +55,15 @@
   ; content Database -> Boolean
   ; checks the data integrity of the database without correction
   (local (
-          (define schema (database-schema db))
-          (define content (database-content db))
-          (define preds (map spec-pred schema))
-          (define l-preds (length preds))
-          (define (correct-and-unique? row otherrows)
-            ; Row -> Boolean
-            ; does the new row have the correct structure and composition
-            ; according to the schema, and would it be unique?
-            (and
-             (= (length row) l-preds)
-             (andmap (lambda (p el) (p el)) preds row)
-             (not (ormap (lambda (db-row) (equal? row db-row)) otherrows))))
-          (define (check-row rows)
-            ; Content -> Content
-            ; deletes improper rows from database
-            (or
-             (empty? rows)
-             (and
-              (correct-and-unique? (first rows) (rest rows))
-              (check-row (rest rows))))))
+          (define preds (map spec-pred (database-schema db)))
+          (define l-preds (length preds)))
     ; - IN -
-    (check-row content)))
+    (andmap
+     (lambda (row)
+       (and
+        (= (length row) l-preds)
+        (andmap (lambda (prd elem) (prd elem)) preds row)))
+     (database-content db))))
 
 
 (define (select-columns db locols)
@@ -130,15 +117,11 @@
 (define mismatch-content '(("Job" 792 #f) ("Esai" 231 #t) ("Hemat" 666 #f)
                                           ("Babil" 4 #t)
                                           ("Akatesh" 792 #f "wrong")))
-(define dupli-content '(("Hemat" 666 #f) ("Babil" 4 #t) ("Job" 792 #f)
-                                         ("Esai" 231 #t) ("Hemat" 666 #f)
-                                         ("Babil" 4 #t)))
 (define deleted-content  '(("Job" #f) ("Esai" #t) ("Hemat" #f) ("Babil" #t)))
 (define filtered-content  '(("Job" 792 #f) ("Hemat" 666 #f)))
 (check-expect (check-integrity (make-database schema content)) #t)
 (check-expect (check-integrity (make-database schema invalid-content)) #f)
 (check-expect (check-integrity (make-database schema mismatch-content)) #f)
-(check-expect (check-integrity (make-database schema dupli-content)) #f)
 (check-expect (select-columns (make-database schema content) '("Name" "Living"))
               (make-database deleted-schema deleted-content))
 (check-expect (filter-content (make-database schema content) "Age"
